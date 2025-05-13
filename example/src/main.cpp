@@ -20,11 +20,11 @@
 #include <FreeSansOblique9pt7b.h>
 
 // SPI Pins
-#define OLED_CLOCK 12
-#define OLED_DATA 13
+#define OLED_CLOCK 13
+#define OLED_DATA 11
 #define OLED_CS 10
-#define OLED_DC 11
-#define OLED_RESET -1 // no reset pin
+#define OLED_DC 9
+#define OLED_RESET 8 
 
 // display size
 #define OLED_WIDTH 256
@@ -32,7 +32,7 @@
 
 // buffer + display instance
 uint8_t tx_buf[OLED_WIDTH * OLED_HEIGHT / 2];
-SSD1322 display(OLED_CS, OLED_DC, OLED_RESET, OLED_HEIGHT, OLED_WIDTH);
+SSD1322 display(OLED_CS, OLED_DC, OLED_HEIGHT, OLED_WIDTH, OLED_RESET);
 
 // ### demo functions:
 
@@ -151,7 +151,8 @@ void setup()
   pinMode(OLED_CS, OUTPUT);
   pinMode(OLED_DC, OUTPUT);
 
-  SPI.begin(OLED_CLOCK, -1, OLED_DATA, OLED_CS);
+  SPI.begin();
+
   delay(500);
 
   // init display

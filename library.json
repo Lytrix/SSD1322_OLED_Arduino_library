@@ -1,0 +1,23 @@
+{
+    "name": "SSD1322_OLED",
+    "version": "1.0.0",
+    "description": "Arduino library for SSD1322 OLEDs with grayscale usability",
+    "keywords": "display, oled, ssd1322, grayscale",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/Lytrix/SSD1322_OLED_Arduino_library.git"
+    },
+    "authors": [
+        {
+            "name": "Lytrix",
+            "maintainer": true
+        }
+    ],
+    "license": "MIT",
+    "frameworks": "arduino",
+    "platforms": "teensy",
+    "build": {
+        "srcDir": "src",
+        "includeDir": "include"
+    }
+} 

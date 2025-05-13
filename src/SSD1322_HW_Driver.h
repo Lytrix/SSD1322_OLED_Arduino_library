@@ -30,9 +30,12 @@ private:
     int OLED_CS;
     int OLED_DC;
     int OLED_RESET;
+    uint32_t _spi_clock;
 
 public:
-    SSD1322_HW_DRIVER(int OLED_CS_PIN, int OLED_DC_PIN, int OLED_RESET_PIN = -1);
+    SSD1322_HW_DRIVER(int OLED_CS_PIN, int OLED_DC_PIN, int OLED_RESET_PIN = -1, uint32_t spi_clock = 8000000);
+    void setSPIClock(uint32_t clock_speed);
+    uint32_t getSPIClock() const { return _spi_clock; }
     void SSD1322_HW_drive_CS_low();
     void SSD1322_HW_drive_CS_high();
     void SSD1322_HW_drive_DC_low();
