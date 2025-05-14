@@ -22,8 +22,8 @@
 //====================== Constructor ========================//
 SSD1322_HW_DRIVER::SSD1322_HW_DRIVER(int OLED_CS_PIN, int OLED_DC_PIN, int OLED_RESET_PIN, uint32_t spi_clock)
 	: OLED_CS(OLED_CS_PIN), OLED_DC(OLED_DC_PIN), OLED_RESET(OLED_RESET_PIN), _spi_clock(spi_clock) {
-	// Initialize SPI with default pins
-	SPI.begin();
+	// Don't initialize SPI here - it will be done by Arduino framework 
+	// (Teensy requires SPI.begin() to be called after setup() starts)
 }
 
 void SSD1322_HW_DRIVER::setSPIClock(uint32_t clock_speed) {
