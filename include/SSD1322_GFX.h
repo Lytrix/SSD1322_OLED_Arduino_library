@@ -19,7 +19,7 @@
 #include <math.h>
 #include <stdint.h>
 #include "SSD1322_API.h"
-#include "Fonts/BitmapFont.h"
+#include "BitmapFont.h"
 
 class SSD1322_GFX
 {

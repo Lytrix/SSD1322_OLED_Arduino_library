@@ -19,6 +19,8 @@
 
 #include "SSD1322_HW_Driver.h"
 
+#define SSD1322_SPI_SPEED 20000000  // 20 MHz
+
 //====================== Constructor ========================//
 SSD1322_HW_DRIVER::SSD1322_HW_DRIVER(int OLED_CS_PIN, int OLED_DC_PIN, int OLED_RESET_PIN, uint32_t spi_clock)
 	: OLED_CS(OLED_CS_PIN), OLED_DC(OLED_DC_PIN), OLED_RESET(OLED_RESET_PIN), _spi_clock(spi_clock) {
@@ -110,7 +112,7 @@ void SSD1322_HW_DRIVER::SSD1322_HW_drive_RESET_high()
  */
 void SSD1322_HW_DRIVER::SSD1322_HW_SPI_send_byte(uint8_t byte_to_transmit)
 {
-	SPI.beginTransaction(SPISettings(_spi_clock, MSBFIRST, SPI_MODE0));
+	SPI.beginTransaction(SPISettings(SSD1322_SPI_SPEED, MSBFIRST, SPI_MODE0));
 	SPI.transfer(byte_to_transmit);
 	SPI.endTransaction();
 }
@@ -124,7 +126,7 @@ void SSD1322_HW_DRIVER::SSD1322_HW_SPI_send_byte(uint8_t byte_to_transmit)
  */
 void SSD1322_HW_DRIVER::SSD1322_HW_SPI_send_array(uint8_t *array_to_transmit, uint32_t array_size)
 {
-	SPI.beginTransaction(SPISettings(_spi_clock, MSBFIRST, SPI_MODE0));
+	SPI.beginTransaction(SPISettings(SSD1322_SPI_SPEED, MSBFIRST, SPI_MODE0));
 	for (uint32_t i = 0; i < array_size; i++)
 	{
 		SPI.transfer(array_to_transmit[i]);
