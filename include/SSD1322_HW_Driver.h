@@ -26,7 +26,7 @@
 
 class SSD1322_HW_DRIVER
 {
-private:
+protected:
     int OLED_CS;
     int OLED_DC;
     int OLED_RESET;
@@ -42,8 +42,8 @@ public:
     void SSD1322_HW_drive_DC_high();
     void SSD1322_HW_drive_RESET_low();
     void SSD1322_HW_drive_RESET_high();
-    void SSD1322_HW_SPI_send_byte(uint8_t byte_to_transmit);
-    void SSD1322_HW_SPI_send_array(uint8_t *array_to_transmit, uint32_t array_size);
+    virtual void SSD1322_HW_SPI_send_byte(uint8_t byte_to_transmit);
+    virtual void SSD1322_HW_SPI_send_array(uint8_t *array_to_transmit, uint32_t array_size);
     void SSD1322_HW_msDelay(uint32_t milliseconds);
 };
 
