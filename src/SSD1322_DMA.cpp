@@ -145,18 +145,10 @@ bool SSD1322_DMA::draw_framebuffer_interruptible(uint8_t *src_buffer) {
   return done;
 }
 
-// DMA circular ISR
+// DMA circular ISR - updated to be consistent with minimal_dma_example.ino
 void SSD1322_DMA::dmaCircularCompleteISR() {
-  // This is called when a complete segment has been transmitted
-  
-  // Clear the interrupt flag
+  // Clear interrupt flag
   _dma.clearInterrupt();
-  
-  // Clear DONE bit (critical for continuous operation)
-  _dma.TCD->CSR = _dma.TCD->CSR & ~DMA_TCD_CSR_DONE;
-  
-  // Ensure DMA is still in ERQ
-  DMA_SERQ = _dma.channel;  // Set request again
   
   // Increment trigger counter
   _dmaTriggerCount++;
@@ -171,112 +163,75 @@ void SSD1322_DMA::dmaCircularCompleteISR() {
 }
 
 void SSD1322_DMA::setupDmamuxChannel() {
-  // Reset DMA for a fresh setup and disable any active settings
-  _dma.disable();
-  
   // Reset DMAMUX completely to ensure clean state
-  DMAMUX_CHCFG0 = 0;  // Disable channel completely
+  volatile uint32_t *chcfg = &DMAMUX_CHCFG0 + _dma.channel;
+  *chcfg = 0;  // Disable channel completely
   delayMicroseconds(1);
 }
 
 void SSD1322_DMA::configureDmaChain() {
   // Initialize DMA channel
   _dma.begin(true);
-  _pendingRxCount = FRAMEBUFFER_SIZE;
   
-  // We need a real frame buffer to configure DMA settings
-  // This is a simplification - in a real app, you'd use your actual frame buffer
-  static uint8_t dummyBuffer[FRAMEBUFFER_SIZE];
+  // Configure DMA channel to use LPSPI4_TX trigger
+  int ch = _dma.channel;
   
-  // Configure the three segments of the circular DMA buffer
-  _dmaSettings[0].sourceBuffer(dummyBuffer, SEGMENT_SIZE);
-  _dmaSettings[0].destination(LPSPI4_TDR);
-  _dmaSettings[0].transferSize(1);  // 8-bit transfers
-  _dmaSettings[0].transferCount(SEGMENT_SIZE);
-  _dmaSettings[0].replaceSettingsOnCompletion(_dmaSettings[1]);
-  _dmaSettings[0].TCD->CSR &= ~DMA_TCD_CSR_DREQ; // Don't disable channel on completion
+  // Enable DMA clock
+  CCM_CCGR5 |= CCM_CCGR5_DMA_MASK;
   
-  _dmaSettings[1].sourceBuffer(dummyBuffer + SEGMENT_SIZE, SEGMENT_SIZE);
-  _dmaSettings[1].destination(LPSPI4_TDR);
-  _dmaSettings[1].transferSize(1);
-  _dmaSettings[1].transferCount(SEGMENT_SIZE);
-  _dmaSettings[1].replaceSettingsOnCompletion(_dmaSettings[2]);
-  _dmaSettings[1].TCD->CSR &= ~DMA_TCD_CSR_DREQ; // Don't disable channel on completion
+  // Configure NVIC for DMA interrupt
+  NVIC_ENABLE_IRQ(IRQ_DMA_CH0 + ch);
   
-  _dmaSettings[2].sourceBuffer(dummyBuffer + 2 * SEGMENT_SIZE, SEGMENT_SIZE);
-  _dmaSettings[2].destination(LPSPI4_TDR);
-  _dmaSettings[2].transferSize(1);
-  _dmaSettings[2].transferCount(SEGMENT_SIZE);
-  _dmaSettings[2].replaceSettingsOnCompletion(_dmaSettings[0]);  // Circular: Back to first segment
-  _dmaSettings[2].interruptAtCompletion();  // Trigger interrupt at end of this segment
-  _dmaSettings[2].TCD->CSR &= ~DMA_TCD_CSR_DREQ; // Don't disable channel on completion
+  // Configure the DMA to circle within the framebuffer
+  static uint8_t framebuffer[FRAMEBUFFER_SIZE] __attribute__((aligned(32)));
   
-  // Configure main DMA channel with first segment settings
-  _dma = _dmaSettings[0];
+  // Initialize framebuffer with test pattern or zeroes
+  for (int i = 0; i < FRAMEBUFFER_SIZE; i++) {
+    framebuffer[i] = 0;
+  }
+  
+  _dma.sourceBuffer(framebuffer, FRAMEBUFFER_SIZE);
+  _dma.destination(LPSPI4_TDR);
+  _dma.TCD->ATTR = DMA_TCD_ATTR_SSIZE(0) | DMA_TCD_ATTR_DSIZE(0);  // 8-bit transfer
+  _dma.TCD->NBYTES = 1;     // Transfer 1 byte at a time
+  _dma.TCD->DOFF = 0;       // Don't increment destination
+  
+  // Attach interrupt handler
   _dma.attachInterrupt(dma_circular_complete_isr);
+  
+  // Setup for continuous mode
+  _pendingRxCount = FRAMEBUFFER_SIZE;
 }
 
 void SSD1322_DMA::configureSpiFifos() {
-  // Reset FIFO and SPI module first
-  LPSPI4_CR = LPSPI_CR_RST;  // Reset SPI module
-  delayMicroseconds(1);
-  LPSPI4_CR = 0;
-  delayMicroseconds(1);
+  // Reset and configure LPSPI
+  LPSPI4_CR &= ~LPSPI_CR_MEN;  // Disable module first
+  LPSPI4_CR |= LPSPI_CR_RTF | LPSPI_CR_RRF;  // Reset TX and RX FIFOs
+  LPSPI4_FCR = 0;  // Zero watermark
+  LPSPI4_CR |= LPSPI_CR_MEN;  // Re-enable module
   
-  // Configure optimal FIFO watermarks
-  LPSPI4_FCR = LPSPI_FCR_TXWATER(1) | LPSPI_FCR_RXWATER(3);
-  
-  // Clear status flags
-  LPSPI4_SR = 0x3F00;  // Clear all status flags
-  
-  // Reset FIFOs
-  LPSPI4_CR |= LPSPI_CR_RTF | LPSPI_CR_RRF;
-  delayMicroseconds(1);
-
-  // Enable SPI module
-  LPSPI4_CR = LPSPI_CR_MEN;
-  delayMicroseconds(1);
-  
-  // Make sure RX FIFO is empty
-  while ((LPSPI4_RSR & LPSPI_RSR_RXEMPTY) == 0) {
-    volatile uint32_t dummy = LPSPI4_RDR;
-    (void)dummy;
-  }
+  // Configure LPSPI for transfers
+  LPSPI4_TCR = LPSPI_TCR_FRAMESZ(7) | (1 << 22);  // 8-bit, CONT=1
+  LPSPI4_CFGR1 = LPSPI_CFGR1_MASTER | (1 << 5) | LPSPI_CFGR1_NOSTALL;
+  LPSPI4_SR = 0x3F00;  // Clear errors
+  LPSPI4_DER = LPSPI_DER_TDDE;  // Enable TX DMA
 }
 
 void SSD1322_DMA::primeTxFifoAndStartDma() {
-  // Set the DMAMUX to trigger DMA channel from LPSPI4_TX
-  DMAMUX_CHCFG0 = 0;  // Disable first
-  delayMicroseconds(1);
-  DMAMUX_CHCFG0 = DMAMUX_SOURCE_LPSPI4_TX | DMAMUX_ENABLE;
+  // Configure hardware trigger for DMA
+  _dma.triggerAtHardwareEvent(DMAMUX_SOURCE_LPSPI4_TX);
   
-  // Update TCR register - ensure 8-bit transfers
-  LPSPI4_TCR = 7;  // 8-bit transfers (FRAMESZ=7 for 8 bits)
+  // Direct register access for DMAMUX with proper enable bit
+  volatile uint32_t *chcfg = &DMAMUX_CHCFG0 + _dma.channel;
+  *chcfg = DMAMUX_SOURCE_LPSPI4_TX | DMAMUX_CHCFG_ENBL_MASK;
   
-  // Reset FIFOs one more time before starting
-  LPSPI4_CR |= LPSPI_CR_RTF | LPSPI_CR_RRF;
-  delayMicroseconds(1);
+  // Prime the first transfer
+  LPSPI4_TDR = 0;  // Send first byte to start DMA
   
-  // Start DMA in critical section to prevent interruptions
-  noInterrupts();
-  
-  // Prime the TX FIFO with a few bytes to get transfers started
-  LPSPI4_TDR = 0;  // Dummy data
-  LPSPI4_TDR = 0;
-  delayMicroseconds(1);
-  
-  // Clear DONE bit
-  _dma.TCD->CSR &= ~DMA_TCD_CSR_DONE;
-  
-  // Enable request and hardware
-  DMA_SERQ = _dma.channel;
-  
-  // Enable TX DMA first, then RX DMA
-  LPSPI4_DER = LPSPI_DER_TDDE;  // TX DMA enable first
-  delayMicroseconds(1);
-  LPSPI4_DER |= LPSPI_DER_RDDE; // RX DMA enable second
-  
-  interrupts();
+  // Start DMA
+  _dma.enable();
+  _dmaComplete = false;
+  _continuousMode = true;
 }
 
 // ISR function called from DMA interrupt

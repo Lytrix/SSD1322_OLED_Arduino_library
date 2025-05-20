@@ -151,7 +151,7 @@ void setup()
   pinMode(OLED_CS, OUTPUT);
   pinMode(OLED_DC, OUTPUT);
 
-  SPI.begin();
+  SPI.begin(); 
 
   delay(500);
 
