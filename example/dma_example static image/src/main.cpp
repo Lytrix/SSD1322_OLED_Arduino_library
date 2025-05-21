@@ -24,21 +24,12 @@ void testSpiMode();
 void testDmaMode();
 void showBlankScreen();
 void testManualFifoFill();
-void updateDisplayFrame();
 
 // Create instances
 SSD1322 oled(OLED_CS_PIN, OLED_DC_PIN, OLED_HEIGHT, OLED_WIDTH, OLED_RESET_PIN);
 
 // Add this at the top, after includes and before setup():
 // uint8_t dma_buffer[(OLED_WIDTH / 2) * OLED_HEIGHT];
-
-#define DISPLAY_FRAME_INTERVAL_US 33333  // 30fps = 33.333ms
-#define MIDI_UPDATE_INTERVAL_US 20       // 20us per MIDI event
-
-volatile uint32_t frameCount = 0;
-volatile uint32_t midiCount = 0;
-volatile int32_t maxMidiJitter = 0;
-volatile int32_t maxDisplayJitter = 0;
 
 void setup() {
   // Initialize serial for debugging
@@ -81,84 +72,35 @@ void setup() {
 }
 
 void loop() {
-  uint32_t now = micros();
+  // Test regular SPI transfers first
+  Serial.println("\n--- Standard SPI Test ---");
+  testSpiMode();
+  delay(2000);
 
-  // MIDI update section (every 20us)
-  static uint32_t lastMidi = 0;
-  int32_t midiJitter = (int32_t)(now - lastMidi) - MIDI_UPDATE_INTERVAL_US;
-  if (midiJitter > maxMidiJitter) maxMidiJitter = midiJitter;
-  if ((now - lastMidi) >= MIDI_UPDATE_INTERVAL_US) {
-    lastMidi = now;
-    midiCount++;
-    // Simulate MIDI processing (very short)
-    // ... (put your MIDI code here)
-  }
+  // Show blank screen between tests
+  // Serial.println("\n--- Blank Screen ---");
+  // showBlankScreen();
 
-  // Display update section (every 33.3ms)
-  static uint32_t lastDisplay = 0;
-  static uint32_t fillTimeSum = 0;
-  static uint32_t dmaTimeSum = 0;
-  static uint32_t frameCounter = 0;
-  if ((now - lastDisplay) >= DISPLAY_FRAME_INTERVAL_US) {
-    lastDisplay = now;
-    frameCount++;
+  // Manual FIFO fill test
+  // testManualFifoFill();
+  // delay(2000);
 
-    // --- Timing for buffer fill and DMA transfer ---
-    uint32_t fillStart = micros();
+  // Test DMA mode
+  Serial.println("\n--- DMA Test ---");
+  testDmaMode();
+  delay(2000);
 
-    // Fill buffer with animation (same as in updateDisplayFrame)
-    static int8_t bg_brightness = 0; // 0-15
-    static int8_t bg_dir = 1; // 1 for up, -1 for down
-    static uint32_t lastBgUpdate = 0;
-    uint32_t now_ms = millis();
-    if (now_ms - lastBgUpdate >= 1000) {
-      lastBgUpdate = now_ms;
-      bg_brightness += bg_dir;
-      if (bg_brightness >= 15) {
-        bg_brightness = 15;
-        bg_dir = -1;
-      } else if (bg_brightness <= 0) {
-        bg_brightness = 0;
-        bg_dir = 1;
-      }
-    }
-    uint8_t bar = 0xF; // max brightness for 4bpp
-    uint8_t bar_y = frameCount % OLED_HEIGHT;
-    uint8_t line_x = frameCount % OLED_WIDTH;
-    for (uint32_t y = 0; y < OLED_HEIGHT; ++y) {
-      for (uint32_t x = 0; x < OLED_WIDTH; x += 2) {
-        uint8_t left = (x < (OLED_WIDTH/2)) ? bg_brightness : 0x1;
-        uint8_t right = ((x+1) < (OLED_WIDTH/2)) ? bg_brightness : 0x1;
-        if (y == bar_y) { left = bar; right = bar; }
-        if (x == line_x) left = bar;
-        if ((x+1) == line_x) right = bar;
-        dma_buffer[(y * (OLED_WIDTH / 2)) + (x / 2)] = (left << 4) | (right & 0x0F);
-      }
-    }
-    uint32_t fillEnd = micros();
-    fillTimeSum += (fillEnd - fillStart);
+  // Try the interruptible draw method
+  // Serial.println("\n--- Interruptible DMA Test ---");
+  // bool completed = false;
+  // while (!completed) {
+  //   completed = oledDma.draw_framebuffer_interruptible(dma_buffer);
+  //   delay(10);
+  // }
+  // delay(2000);
 
-    // DMA transfer timing
-    arm_dcache_flush((void*)dma_buffer, DMABUFFER_SIZE);
-    oled.api.SSD1322_API_set_window(0, 63, 0, 63);
-    oled.api.SSD1322_API_command(SSD1322_WRITE_RAM);
-    digitalWrite(OLED_DC_PIN, HIGH);
-    digitalWrite(OLED_CS_PIN, LOW);
-    uint32_t dmaStart = micros();
-    TsyDMASPI0.queue(dma_buffer, DMABUFFER_SIZE);
-    while (TsyDMASPI0.remained() > 0) {}
-    digitalWrite(OLED_CS_PIN, HIGH);
-    uint32_t dmaEnd = micros();
-    dmaTimeSum += (dmaEnd - dmaStart);
-
-    frameCounter++;
-    if (frameCounter >= 30) {
-      Serial.printf("Avg buffer fill: %lu us | Avg DMA transfer: %lu us\n", fillTimeSum / frameCounter, dmaTimeSum / frameCounter);
-      fillTimeSum = 0;
-      dmaTimeSum = 0;
-      frameCounter = 0;
-    }
-  }
+  Serial.println("All tests completed, waiting 10 seconds...");
+  delay(5000);
 }
 
 // DMA transfer complete callback
@@ -223,20 +165,9 @@ void testSpiMode() {
 
 // Test with DMA transfers
 void testDmaMode() {
-  // Animation: moving vertical bar
-  uint8_t bg = 0x11; // dim background
-  uint8_t bar = 0xFF; // bright bar
-  uint8_t bar_x = frameCount % OLED_WIDTH;
-
+  // Measure time to fill buffer (CPU busy)
   uint32_t fillStart = micros();
-  for (uint32_t y = 0; y < OLED_HEIGHT; ++y) {
-    for (uint32_t x = 0; x < OLED_WIDTH; x += 2) {
-      // Each byte holds two pixels (4bpp)
-      uint8_t left = (x == bar_x) ? bar : bg;
-      uint8_t right = ((x+1) == bar_x) ? bar : bg;
-      dma_buffer[(y * (OLED_WIDTH / 2)) + (x / 2)] = (left << 4) | (right & 0x0F);
-    }
-  }
+  oled.gfx.fill_buffer(dma_buffer, 0xff);
   uint32_t fillEnd = micros();
   Serial.printf("Time to fill buffer (CPU busy): %u microseconds\n", fillEnd - fillStart);
 
@@ -266,6 +197,25 @@ void testDmaMode() {
   Serial.printf("Total elapsed time for DMA transfer (CPU free): %u microseconds\n", dmaEnd - dmaStart);
 }
 
+// void showBlankScreen() {
+//   // Set up window for drawing
+  
+//   oled.api.SSD1322_API_set_window(0, 127, 0, 63);
+//   oled.api.SSD1322_API_command(SSD1322_WRITE_RAM);
+//   digitalWrite(OLED_DC_PIN, HIGH);
+//   digitalWrite(OLED_CS_PIN, LOW);
+
+//   for (int y = 0; y < OLED_HEIGHT; y++) {
+//     for (int x = 0; x < OLED_WIDTH/2; x++) {
+//       SPI.transfer(0x00);
+      
+//     }
+//   }
+ 
+//   digitalWrite(OLED_CS_PIN, HIGH);
+//   delay(2000); // Show blank screen for 2s
+// }
+
 void testManualFifoFill() {
   Serial.println("\n--- Manual FIFO Fill Test ---");
   // Set up window for drawing
@@ -292,46 +242,4 @@ void testManualFifoFill() {
   digitalWrite(OLED_CS_PIN, HIGH);
 }
 
-void updateDisplayFrame() {
-  static int8_t bg_brightness = 0; // 0-15
-  static int8_t bg_dir = 1; // 1 for up, -1 for down
-  static uint32_t lastBgUpdate = 0;
-  uint32_t now = millis();
-  if (now - lastBgUpdate >= 1000) {
-    lastBgUpdate = now;
-    bg_brightness += bg_dir;
-    if (bg_brightness >= 15) {
-      bg_brightness = 15;
-      bg_dir = -1;
-    } else if (bg_brightness <= 0) {
-      bg_brightness = 0;
-      bg_dir = 1;
-    }
-  }
 
-  uint8_t bar = 0xF; // max brightness for 4bpp
-  uint8_t bar_y = frameCount % OLED_HEIGHT;
-  uint8_t line_x = frameCount % OLED_WIDTH;
-
-  for (uint32_t y = 0; y < OLED_HEIGHT; ++y) {
-    for (uint32_t x = 0; x < OLED_WIDTH; x += 2) {
-      // Background: left 0-50% of screen
-      uint8_t left = (x < (OLED_WIDTH/2)) ? bg_brightness : 0x1;
-      uint8_t right = ((x+1) < (OLED_WIDTH/2)) ? bg_brightness : 0x1;
-      // Horizontal bar
-      if (y == bar_y) { left = bar; right = bar; }
-      // Vertical line
-      if (x == line_x) left = bar;
-      if ((x+1) == line_x) right = bar;
-      dma_buffer[(y * (OLED_WIDTH / 2)) + (x / 2)] = (left << 4) | (right & 0x0F);
-    }
-  }
-  arm_dcache_flush((void*)dma_buffer, DMABUFFER_SIZE);
-  oled.api.SSD1322_API_set_window(0, 63, 0, 63);
-  oled.api.SSD1322_API_command(SSD1322_WRITE_RAM);
-  digitalWrite(OLED_DC_PIN, HIGH);
-  digitalWrite(OLED_CS_PIN, LOW);
-  TsyDMASPI0.queue(dma_buffer, DMABUFFER_SIZE);
-  while (TsyDMASPI0.remained() > 0) {}
-  digitalWrite(OLED_CS_PIN, HIGH);
-}
