@@ -16,8 +16,12 @@
 //====================== Includes ====================//
 #include "SSD1322_API.h"
 
+
 //====================== Constructor ========================//
-SSD1322_API::SSD1322_API(SSD1322_HW_DRIVER *driver) : driver_instance(driver) {}
+SSD1322_API::SSD1322_API(SSD1322_HW_DRIVER *driver) : driver_instance(driver) {
+	// Initialize the framebuffer to zeroes
+	memset(framebuffer, 0, FRAMEBUFFER_SIZE);
+}
 
 //====================== command ========================//
 /**
@@ -233,4 +237,86 @@ void SSD1322_API::SSD1322_API_send_buffer(uint8_t *buffer, uint32_t buffer_size)
 	driver_instance->SSD1322_HW_drive_DC_high();
 	driver_instance->SSD1322_HW_SPI_send_array(buffer, buffer_size);
 	driver_instance->SSD1322_HW_drive_CS_high();
+}
+
+#ifdef __IMXRT1062__
+/**
+ *  @brief Sends pixel buffer to SSD1322 GRAM memory using DMA (Teensy 4.x only).
+ *
+ *  This function uses SSD1322_DMA to transfer the buffer via DMA for high-speed, non-blocking display updates.
+ *  The function blocks until the DMA transfer is complete or times out.
+ *
+ *  @param[in] buffer      Array of pixel values to send
+ *  @param[in] buffer_size Number of bytes in the buffer
+ *  @param[in] dmaBuffer   Pointer to a DMA-capable buffer (must be at least buffer_size bytes)
+ */
+void SSD1322_API::SSD1322_API_send_buffer_DMA(uint8_t *buffer, uint32_t buffer_size, uint8_t *dmaBuffer) {
+	if (!dmaBuffer) {
+		Serial.println("SSD1322_API: ERROR - DMA buffer is null!");
+		// Fall back to regular SPI
+		SSD1322_API_send_buffer(buffer, buffer_size);
+		return;
+	}
+	if (!dmaSpi) {
+		Serial.println("SSD1322_API: ERROR - DMA SPI object not set!");
+		// Fall back to regular SPI
+		SSD1322_API_send_buffer(buffer, buffer_size);
+		return;
+	}
+	// Copy buffer to DMA memory
+	memcpy(dmaBuffer, buffer, buffer_size);
+	arm_dcache_flush((void*)dmaBuffer, buffer_size);
+	// Send command and prepare for data
+	SSD1322_API_command(ENABLE_RAM_WRITE);
+	driver_instance->SSD1322_HW_drive_CS_low();
+	driver_instance->SSD1322_HW_drive_DC_high();
+	// Use the member dmaSpi pointer for DMA transfer
+	Serial.println("SSD1322_API: Queueing DMA transfer");
+	noInterrupts();
+	dmaSpi->queue(dmaBuffer, buffer_size);
+	interrupts();
+	// Wait for DMA to complete with timeout
+	Serial.println("SSD1322_API: Waiting for DMA transfer");
+	uint32_t timeout = millis() + 1000;
+	uint32_t remained = 0;
+	while ((remained = dmaSpi->remained()) > 0) {
+		if (millis() > timeout) {
+			Serial.printf("SSD1322_API: ERROR - DMA transfer timeout! %d bytes remaining\n", remained);
+			break;
+		}
+		yield(); // Allow other processing while waiting
+	}
+	
+	// Complete the transfer
+	driver_instance->SSD1322_HW_drive_CS_high();
+	Serial.println("SSD1322_API: DMA transfer complete");
+}
+#endif
+
+uint8_t* SSD1322_API::getFrameBuffer() {
+	return framebuffer;
+}
+
+size_t SSD1322_API::getFrameBufferSize() const {
+	return FRAMEBUFFER_SIZE;
+}
+
+void SSD1322_API::display() {
+	Serial.println("SSD1322_API: Displaying buffer");
+	SSD1322_API_set_window(0, 63, 0, 127); // Full window, adjust as needed
+	Serial.println("SSD1322_API: Window set");
+#ifdef __IMXRT1062__
+	Serial.println("SSD1322_API: Sending buffer via DMA");
+	if (dmaBuffer) {
+		SSD1322_API_send_buffer_DMA(framebuffer + (0 * 256 / 2) + 0, FRAMEBUFFER_SIZE, dmaBuffer);
+		Serial.println("SSD1322_API: DMA buffer sent");
+	} else {
+		Serial.println("SSD1322_API: ERROR - DMA buffer not initialized, falling back to regular SPI");
+		SSD1322_API_send_buffer(framebuffer + (0 * 256 / 2) + 0, FRAMEBUFFER_SIZE);
+	}
+#else
+	Serial.println("SSD1322_API: Sending buffer via SPI");
+	SSD1322_API_send_buffer(framebuffer, FRAMEBUFFER_SIZE);
+#endif
+	Serial.println("SSD1322_API: Display update complete");
 }

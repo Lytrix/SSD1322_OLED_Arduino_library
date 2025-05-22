@@ -5,32 +5,30 @@
 #include "SSD1322_GFX.h"
 #include "SSD1322_HW_Driver.h"
 #include "SSD1322_Config.h"
+#include "SSD1322_DMA.h"
 
 // wrapper class of individual classes
 class SSD1322
 {
 public:
-    SSD1322(int OLED_CS_PIN, int OLED_DC_PIN, int OLED_HEIGHT_SIZE, int OLED_WIDTH_SIZE, int OLED_RESET_PIN = -1);
+    SSD1322(const SSD1322_CONFIG& config_in = SSD1322_CONFIG());
 
     // individual instances
     SSD1322_HW_DRIVER driver;
     SSD1322_API api;
     SSD1322_GFX gfx;
+    SSD1322_CONFIG config;
+    SSD1322_DMA dmaSpi;
 
-#ifdef __IMXRT1062__     // only use on Teensy 4.x
-    // Step one chunk of an in-progress DMA update
-    // returns true when that frame is fully pushed
-    bool drawFrameBufferInterruptible(uint8_t *frame_buffer);
-    
-    // Initialize DMA circular buffer
-    void beginDMA();
-    
-    // Stop DMA operations and return to normal mode
-    void endDMA();
-    
-    // Check if DMA is active
-    bool isDMARunning();
+    void begin();
+    void setDMASPI();
+
+#ifdef __IMXRT1062__
+// Forward declare SSD1322_DMA class
+    void sendFrameBufferDMA(uint8_t* frame_buffer, size_t size = FRAMEBUFFER_SIZE);
+private:
+    uint8_t* dmaBuffer = nullptr;
+    bool useDMA = false;
 #endif
 };
-
 #endif /* SSD1322_H */

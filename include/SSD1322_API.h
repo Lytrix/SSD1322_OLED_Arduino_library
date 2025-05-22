@@ -15,8 +15,9 @@
 
 #ifndef SSD1322_API_H
 #define SSD1322_API_H
-
+#include "SSD1322_Config.h"
 #include "SSD1322_HW_Driver.h"
+#include "SSD1322_DMA.h"
 
 /*============ Commands defines ============*/
 #define ENABLE_GRAYSCALE_TABLE 0x00
@@ -71,7 +72,12 @@ enum SSD1322_mode_e
 class SSD1322_API
 {
 private:
-	SSD1322_HW_DRIVER *driver_instance;
+	uint8_t framebuffer[FRAMEBUFFER_SIZE];
+#ifdef __IMXRT1062__
+	uint8_t* dmaBuffer = nullptr;
+	SSD1322_DMA* dmaSpi = nullptr;
+#endif
+	SSD1322_HW_DRIVER* driver_instance;
 
 public:
 	SSD1322_API(SSD1322_HW_DRIVER *driver);
@@ -92,6 +98,17 @@ public:
 
 	void SSD1322_API_set_window(uint8_t start_column, uint8_t end_column, uint8_t start_row, uint8_t end_row);
 	void SSD1322_API_send_buffer(uint8_t *buffer, uint32_t buffer_size);
+#ifdef __IMXRT1062__
+	void SSD1322_API_send_buffer_DMA(uint8_t *buffer, uint32_t buffer_size, uint8_t *dmaBuffer);
+	void setDMABuffer(uint8_t* buffer) { dmaBuffer = buffer; }
+	void setDMASPI(SSD1322_DMA* spi) { dmaSpi = spi; }
+#endif
+	uint8_t* getFrameBuffer();
+	size_t getFrameBufferSize() const;
+	/**
+	 * @brief Pushes the framebuffer to the OLED display (DMA if available).
+	 */
+	void display();
 };
 
 #endif /* SSD1322_API_H */

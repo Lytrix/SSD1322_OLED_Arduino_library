@@ -655,27 +655,3 @@ void SSD1322_GFX::draw_text(uint8_t *frame_buffer, const char *text, uint16_t x,
 		text++;
 	}
 }
-
-//====================== send frame buffer to OLED ========================//
-/**
- *  @brief Sends frame buffer to OLED display.
- *
- *  Transmits frame buffer to OLED display.
- *
- *  If your frame buffer size is equal to OLED size, leave start_x and start_y at 0.
- *  If you use bigger frame buffer, you can use this parameters to choose region of your frame buffer
- *  that will be displayed on OLED. This is particularly useful for scrolling.
- *
- *  @param[in] frame_buffer
- *             array of pixel values
- *  @param[in] start_x
- *             x position of frame buffer part that will be displayed on OLED. Useful for horizontal scrolling.
- *  @param[in] start_y
- *             y position of frame buffer part that will be displayed on OLED Useful for vertical scrolling.
-
- */
-void SSD1322_GFX::send_buffer_to_OLED(uint8_t *frame_buffer, uint16_t start_x, uint16_t start_y)
-{
-	api_instance->SSD1322_API_set_window(0, 63, 0, 127);
-	api_instance->SSD1322_API_send_buffer(frame_buffer + (start_y * OLED_WIDTH / 2) + start_x, 8192);
-}

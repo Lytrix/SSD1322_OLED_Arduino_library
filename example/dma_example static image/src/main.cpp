@@ -2,7 +2,7 @@
 #include <SPI.h>
 #include "SSD1322.h"
 // #include "SSD1322_DMA.h"
-#include <TsyDMASPI.h>
+#include <SSD1322_DMA.h>
 
 // Configuration constants
 #define DMABUFFER_SIZE ((OLED_WIDTH * OLED_HEIGHT) / 2)  // 4bpp packed pixels
@@ -62,8 +62,8 @@ void setup() {
   
 
 
-  // Initialize TsyDMASPI
-  TsyDMASPI0.begin(OLED_CS_PIN, SPISettings(8000000, MSBFIRST, SPI_MODE0));
+  // Initialize SSD1322_DMA
+  SSD1322_DMA0.begin(OLED_CS_PIN, SPISettings(8000000, MSBFIRST, SPI_MODE0));
   
   // Short delay for everything to initialize
   delay(100);
@@ -182,13 +182,13 @@ void testDmaMode() {
 
   // Measure CPU busy time for DMA setup (non-blocking)
   uint32_t cpuStart = micros();
-  TsyDMASPI0.queue(dma_buffer, DMABUFFER_SIZE);
+  SSD1322_DMA0.queue(dma_buffer, DMABUFFER_SIZE);
   uint32_t cpuEnd = micros();
   Serial.printf("CPU busy time for DMA setup: %u microseconds\n", cpuEnd - cpuStart);
 
   // Measure total elapsed time for DMA transfer (CPU is free during this time)
   uint32_t dmaStart = micros();
-  while (TsyDMASPI0.remained() > 0) {
+  while (SSD1322_DMA0.remained() > 0) {
     // Optionally do other work here
     // yield(); // Uncomment if you want to yield
   }

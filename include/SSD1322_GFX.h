@@ -49,6 +49,4 @@ public:
   void select_font(const GFXfont* font);
   void draw_char(uint8_t *frame_buffer, uint8_t text, uint16_t x, uint16_t y, uint8_t brightness);
   void draw_text(uint8_t *frame_buffer, const char *text, uint16_t x, uint16_t y, uint8_t brightness);
-
-  void send_buffer_to_OLED(uint8_t *frame_buffer, uint16_t start_x, uint16_t start_y);
 };

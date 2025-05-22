@@ -1,6 +1,9 @@
 #ifndef SSD1322_CONFIG_H
 #define SSD1322_CONFIG_H
 
+#include <Arduino.h>
+
+
 // Display Configuration
 struct SSD1322_CONFIG {
     // Pin Configuration
@@ -32,10 +35,6 @@ struct SSD1322_CONFIG {
 // Frame buffer size in bytes (4 bits per pixel = 2 pixels per byte)
 #define FRAMEBUFFER_SIZE (DISPLAY_WIDTH * DISPLAY_HEIGHT / 2)
 
-// DMA segments for circular buffer
-#define SEGMENTS          3
-#define SEGMENT_SIZE     (FRAMEBUFFER_SIZE / SEGMENTS)
-
 // Display controller command codes
 #define SSD1322_SET_COLUMN    0x15
 #define SSD1322_SET_ROW       0x75
@@ -44,9 +43,5 @@ struct SSD1322_CONFIG {
 #define SSD1322_COLUMN_END    0x77  // For 256 pixel width (0x3F for 128px)
 #define SSD1322_ROW_START     0x00
 #define SSD1322_ROW_END       0x3F  // For 64 pixel height
-
-// Buffer handling commands
-#define TRANSFER_CHUNK_SIZE   120
-#define NUM_CHUNKS           (FRAMEBUFFER_SIZE / TRANSFER_CHUNK_SIZE + 1)
 
 #endif /* SSD1322_CONFIG_H */ 
