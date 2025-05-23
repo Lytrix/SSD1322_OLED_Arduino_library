@@ -306,14 +306,25 @@ void SSD1322_API::SSD1322_API_send_buffer_DMA(uint8_t *buffer, uint32_t buffer_s
 }
 #endif
 
+/**
+ *  @brief Returns a pointer to the framebuffer.
+ *  @return Pointer to the framebuffer array.
+ */
 uint8_t* SSD1322_API::getFrameBuffer() {
 	return framebuffer;
 }
 
+/**
+ *  @brief Returns the size of the framebuffer in bytes.
+ *  @return Size of the framebuffer.
+ */
 size_t SSD1322_API::getFrameBufferSize() const {
 	return FRAMEBUFFER_SIZE;
 }
 
+/**
+ *  @brief Updates the display with the contents of the framebuffer.
+ */
 void SSD1322_API::display() {
 	//Serial.println("SSD1322_API: Displaying buffer");
 	SSD1322_API_set_window(0, 63, 0, 63); // Full window, adjust as needed
