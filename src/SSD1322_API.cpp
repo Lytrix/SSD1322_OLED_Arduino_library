@@ -15,12 +15,19 @@
 
 //====================== Includes ====================//
 #include "SSD1322_API.h"
+#include "SSD1322_Config.h"
+#include "TsyDMASPI.h"
 
+SSD1322_CONFIG config;
 
 //====================== Constructor ========================//
 SSD1322_API::SSD1322_API(SSD1322_HW_DRIVER *driver) : driver_instance(driver) {
 	// Initialize the framebuffer to zeroes
 	memset(framebuffer, 0, FRAMEBUFFER_SIZE);
+}
+
+void SSD1322_API::begin() {
+	TsyDMASPI0.begin(config.OLED_CS_PIN, SPISettings(config.SPI_CLOCK, MSBFIRST, SPI_MODE0));
 }
 
 //====================== command ========================//
@@ -257,29 +264,34 @@ void SSD1322_API::SSD1322_API_send_buffer_DMA(uint8_t *buffer, uint32_t buffer_s
 		SSD1322_API_send_buffer(buffer, buffer_size);
 		return;
 	}
-	if (!dmaSpi) {
-		Serial.println("SSD1322_API: ERROR - DMA SPI object not set!");
-		// Fall back to regular SPI
-		SSD1322_API_send_buffer(buffer, buffer_size);
-		return;
-	}
+	// if (!TsyDMASPI0) {
+	// 	Serial.println("SSD1322_API: ERROR - DMA SPI object not set!");
+	// 	// Fall back to regular SPI
+	// 	SSD1322_API_send_buffer(buffer, buffer_size);
+	// 	return;
+	// }
 	// Copy buffer to DMA memory
+	uint32_t startTime = micros();
 	memcpy(dmaBuffer, buffer, buffer_size);
-	arm_dcache_flush((void*)dmaBuffer, buffer_size);
 	// Send command and prepare for data
-	SSD1322_API_command(ENABLE_RAM_WRITE);
-	driver_instance->SSD1322_HW_drive_CS_low();
-	driver_instance->SSD1322_HW_drive_DC_high();
+    SSD1322_API_set_window(0, 63, 0, 63);
+    SSD1322_API_command(SSD1322_WRITE_RAM);
+    digitalWrite(config.OLED_DC_PIN, HIGH);
+    digitalWrite(config.OLED_CS_PIN, LOW);
 	// Use the member dmaSpi pointer for DMA transfer
-	Serial.println("SSD1322_API: Queueing DMA transfer");
+	//Serial.println("SSD1322_API: Queueing DMA transfer");
 	noInterrupts();
-	dmaSpi->queue(dmaBuffer, buffer_size);
+	arm_dcache_flush((void*)dmaBuffer, buffer_size);
+	TsyDMASPI0.queue(dmaBuffer, buffer_size);
 	interrupts();
+	uint32_t time = micros() - startTime;
 	// Wait for DMA to complete with timeout
-	Serial.println("SSD1322_API: Waiting for DMA transfer");
+	// Serial.println("SSD1322_API: Waiting for DMA transfer");
 	uint32_t timeout = millis() + 1000;
 	uint32_t remained = 0;
-	while ((remained = dmaSpi->remained()) > 0) {
+	
+	//Serial.println("SSD1322_API: Waiting for DMA transfer");
+	while ((remained = TsyDMASPI0.remained()) > 0) {
 		if (millis() > timeout) {
 			Serial.printf("SSD1322_API: ERROR - DMA transfer timeout! %d bytes remaining\n", remained);
 			break;
@@ -287,9 +299,10 @@ void SSD1322_API::SSD1322_API_send_buffer_DMA(uint8_t *buffer, uint32_t buffer_s
 		yield(); // Allow other processing while waiting
 	}
 	
+	Serial.println("time: " + String(time) + "uS");
 	// Complete the transfer
 	driver_instance->SSD1322_HW_drive_CS_high();
-	Serial.println("SSD1322_API: DMA transfer complete");
+	//Serial.println("SSD1322_API: DMA transfer complete");
 }
 #endif
 
@@ -302,14 +315,14 @@ size_t SSD1322_API::getFrameBufferSize() const {
 }
 
 void SSD1322_API::display() {
-	Serial.println("SSD1322_API: Displaying buffer");
-	SSD1322_API_set_window(0, 63, 0, 127); // Full window, adjust as needed
-	Serial.println("SSD1322_API: Window set");
+	//Serial.println("SSD1322_API: Displaying buffer");
+	SSD1322_API_set_window(0, 63, 0, 63); // Full window, adjust as needed
+	//Serial.println("SSD1322_API: Window set");
 #ifdef __IMXRT1062__
-	Serial.println("SSD1322_API: Sending buffer via DMA");
+	//Serial.println("SSD1322_API: Sending buffer via DMA");
 	if (dmaBuffer) {
 		SSD1322_API_send_buffer_DMA(framebuffer + (0 * 256 / 2) + 0, FRAMEBUFFER_SIZE, dmaBuffer);
-		Serial.println("SSD1322_API: DMA buffer sent");
+	//	Serial.println("SSD1322_API: DMA buffer sent");
 	} else {
 		Serial.println("SSD1322_API: ERROR - DMA buffer not initialized, falling back to regular SPI");
 		SSD1322_API_send_buffer(framebuffer + (0 * 256 / 2) + 0, FRAMEBUFFER_SIZE);
@@ -318,5 +331,5 @@ void SSD1322_API::display() {
 	Serial.println("SSD1322_API: Sending buffer via SPI");
 	SSD1322_API_send_buffer(framebuffer, FRAMEBUFFER_SIZE);
 #endif
-	Serial.println("SSD1322_API: Display update complete");
+	//Serial.println("SSD1322_API: Display update complete");
 }

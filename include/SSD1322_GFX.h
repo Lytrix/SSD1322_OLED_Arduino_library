@@ -29,7 +29,7 @@ private:
   int OLED_WIDTH;
   uint16_t _buffer_height;
   uint16_t _buffer_width;
-  const GFXfont* currentFont = nullptr;
+  GFXfont* currentFont = nullptr;
 
 public:
   SSD1322_GFX(SSD1322_API *api, int OLED_HEIGHT_SIZE, int OLED_WIDTH_SIZE);

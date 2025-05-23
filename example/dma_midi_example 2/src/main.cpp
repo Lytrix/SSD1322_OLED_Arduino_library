@@ -1,9 +1,13 @@
 #include <Arduino.h>
 #include <SPI.h>
-#include <SSD1322.h>
+#include "SSD1322.h"
 #include <TsyDMASPI.h>
 
 // Configuration constants
+#define DMABUFFER_SIZE ((OLED_WIDTH * OLED_HEIGHT) / 2)  // 4bpp packed pixels
+
+DMAMEM uint8_t dma_buffer[DMABUFFER_SIZE] __attribute__((aligned(32)));
+DMAMEM uint8_t pixel_buffer[DMABUFFER_SIZE] __attribute__((aligned(32)));
 
 // Pin definitions (adjust according to your setup)
 #define OLED_CS_PIN    10
@@ -12,12 +16,7 @@
 #define OLED_WIDTH     256 // Set to your display's width
 #define OLED_RESET_PIN 8
 
-
-#define DMABUFFER_SIZE ((OLED_WIDTH * OLED_HEIGHT) / 2)  // 4bpp packed pixels
-
-DMAMEM uint8_t dma_buffer[DMABUFFER_SIZE] __attribute__((aligned(32)));
-DMAMEM uint8_t pixel_buffer[DMABUFFER_SIZE] __attribute__((aligned(32)));
-
+extern volatile bool dmaDoneFlag;
 
 // Forward declarations
 void dmaCallback();
@@ -28,7 +27,7 @@ void testManualFifoFill();
 void updateDisplayFrame();
 
 // Create instances
-SSD1322 oled;
+SSD1322 oled(OLED_CS_PIN, OLED_DC_PIN, OLED_HEIGHT, OLED_WIDTH, OLED_RESET_PIN);
 
 // Add this at the top, after includes and before setup():
 // uint8_t dma_buffer[(OLED_WIDTH / 2) * OLED_HEIGHT];
@@ -40,8 +39,6 @@ volatile uint32_t frameCount = 0;
 volatile uint32_t midiCount = 0;
 volatile int32_t maxMidiJitter = 0;
 volatile int32_t maxDisplayJitter = 0;
-
-//DisplayDMA displayDma(OLED_CS_PIN, SPISettings(8000000, MSBFIRST, SPI_MODE0));
 
 void setup() {
   // Initialize serial for debugging
@@ -61,7 +58,7 @@ void setup() {
   SPI.begin();
 
     // Initialize display
-  oled.begin();
+  oled.api.SSD1322_API_init();
   // If you have a different init, use it here.
   oled.gfx.set_buffer_size(256, 64);
   
@@ -73,7 +70,8 @@ void setup() {
   
 
   // Initialize SSD1322_DMA
-  //displayDma.begin();
+  TsyDMASPI0.begin(OLED_CS_PIN, SPISettings(8000000, MSBFIRST, SPI_MODE0));
+  
   // Short delay for everything to initialize
   delay(100);
   
@@ -85,6 +83,8 @@ void loop() {
 
   // MIDI update section (every 20us)
   static uint32_t lastMidi = 0;
+  int32_t midiJitter = (int32_t)(now - lastMidi) - MIDI_UPDATE_INTERVAL_US;
+  if (midiJitter > maxMidiJitter) maxMidiJitter = midiJitter;
   if ((now - lastMidi) >= MIDI_UPDATE_INTERVAL_US) {
     lastMidi = now;
     midiCount++;
@@ -134,22 +134,21 @@ void loop() {
       }
     }
 
+   
     uint32_t fillEnd = micros();
     fillTimeSum += (fillEnd - fillStart);
-
+  
     memcpy(dma_buffer, pixel_buffer, DMABUFFER_SIZE);  
-
     // DMA transfer timing
+    
     oled.api.SSD1322_API_set_window(0, 63, 0, 63);
     oled.api.SSD1322_API_command(SSD1322_WRITE_RAM);
     digitalWrite(OLED_DC_PIN, HIGH);
     digitalWrite(OLED_CS_PIN, LOW);
     uint32_t dmaStart = micros();
-    arm_dcache_flush((void*)dma_buffer, DMABUFFER_SIZE);
-    // if (!displayDma.isBusy()) {
-    //     displayDma.startFrame(dma_buffer, DMABUFFER_SIZE);
-    // }
-   // while (TsyDMASPI0.remained() > 0) {}
+      arm_dcache_flush((void*)dma_buffer, DMABUFFER_SIZE);
+    TsyDMASPI0.queue(dma_buffer, DMABUFFER_SIZE);
+    while (TsyDMASPI0.remained() > 0) {}
     digitalWrite(OLED_CS_PIN, HIGH);
     uint32_t dmaEnd = micros();
     dmaTimeSum += (dmaEnd - dmaStart);
@@ -254,14 +253,16 @@ void testDmaMode() {
 
   // Measure CPU busy time for DMA setup (non-blocking)
   uint32_t cpuStart = micros();
-  //  if (!displayDma.isBusy()) {
-  //       displayDma.startFrame(dma_buffer, DMABUFFER_SIZE);
-  //   }
+  TsyDMASPI0.queue(dma_buffer, DMABUFFER_SIZE);
   uint32_t cpuEnd = micros();
   Serial.printf("CPU busy time for DMA setup: %u microseconds\n", cpuEnd - cpuStart);
 
   // Measure total elapsed time for DMA transfer (CPU is free during this time)
   uint32_t dmaStart = micros();
+  while (TsyDMASPI0.remained() > 0) {
+    // Optionally do other work here
+    // yield(); // Uncomment if you want to yield
+  }
   uint32_t dmaEnd = micros();
   digitalWrite(OLED_CS_PIN, HIGH);
   Serial.printf("Total elapsed time for DMA transfer (CPU free): %u microseconds\n", dmaEnd - dmaStart);
@@ -332,10 +333,7 @@ void updateDisplayFrame() {
   oled.api.SSD1322_API_command(SSD1322_WRITE_RAM);
   digitalWrite(OLED_DC_PIN, HIGH);
   digitalWrite(OLED_CS_PIN, LOW);
-  // if (!displayDma.isBusy()) {
-  //       displayDma.startFrame(dma_buffer, DMABUFFER_SIZE);
-  //   }
-  
+  TsyDMASPI0.queue(dma_buffer, DMABUFFER_SIZE);
+  while (TsyDMASPI0.remained() > 0) {}
   digitalWrite(OLED_CS_PIN, HIGH);
-
 }

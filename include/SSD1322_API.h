@@ -17,7 +17,6 @@
 #define SSD1322_API_H
 #include "SSD1322_Config.h"
 #include "SSD1322_HW_Driver.h"
-#include "SSD1322_DMA.h"
 
 /*============ Commands defines ============*/
 #define ENABLE_GRAYSCALE_TABLE 0x00
@@ -75,12 +74,14 @@ private:
 	uint8_t framebuffer[FRAMEBUFFER_SIZE];
 #ifdef __IMXRT1062__
 	uint8_t* dmaBuffer = nullptr;
-	SSD1322_DMA* dmaSpi = nullptr;
+	// SSD1322_DMA* dmaSpi = nullptr;
 #endif
 	SSD1322_HW_DRIVER* driver_instance;
 
 public:
 	SSD1322_API(SSD1322_HW_DRIVER *driver);
+
+	void begin();
 	void SSD1322_API_command(uint8_t command);
 	void SSD1322_API_data(uint8_t data);
 
@@ -101,7 +102,7 @@ public:
 #ifdef __IMXRT1062__
 	void SSD1322_API_send_buffer_DMA(uint8_t *buffer, uint32_t buffer_size, uint8_t *dmaBuffer);
 	void setDMABuffer(uint8_t* buffer) { dmaBuffer = buffer; }
-	void setDMASPI(SSD1322_DMA* spi) { dmaSpi = spi; }
+	// void setDMASPI(SSD1322_DMA* spi) { dmaSpi = spi; }
 #endif
 	uint8_t* getFrameBuffer();
 	size_t getFrameBufferSize() const;
