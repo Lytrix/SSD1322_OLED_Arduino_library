@@ -280,8 +280,8 @@ void SSD1322_API::SSD1322_API_send_buffer_DMA(uint8_t *buffer, uint32_t buffer_s
     digitalWrite(config.OLED_CS_PIN, LOW);
 	// Use the member dmaSpi pointer for DMA transfer
 	//Serial.println("SSD1322_API: Queueing DMA transfer");
-	noInterrupts();
 	arm_dcache_flush((void*)dmaBuffer, buffer_size);
+	noInterrupts();
 	TsyDMASPI0.queue(dmaBuffer, buffer_size);
 	interrupts();
 	uint32_t time = micros() - startTime;
@@ -299,7 +299,7 @@ void SSD1322_API::SSD1322_API_send_buffer_DMA(uint8_t *buffer, uint32_t buffer_s
 		yield(); // Allow other processing while waiting
 	}
 	
-	Serial.println("time: " + String(time) + "uS");
+	//Serial.println("time: " + String(time) + "uS");
 	// Complete the transfer
 	driver_instance->SSD1322_HW_drive_CS_high();
 	//Serial.println("SSD1322_API: DMA transfer complete");
