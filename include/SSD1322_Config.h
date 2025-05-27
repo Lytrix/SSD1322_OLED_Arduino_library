@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 
+#define DEBUG false
 
 // Display Configuration
 struct SSD1322_CONFIG {

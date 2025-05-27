@@ -264,14 +264,20 @@ void SSD1322_API::SSD1322_API_send_buffer_DMA(uint8_t *buffer, uint32_t buffer_s
 		SSD1322_API_send_buffer(buffer, buffer_size);
 		return;
 	}
-	// if (!TsyDMASPI0) {
-	// 	Serial.println("SSD1322_API: ERROR - DMA SPI object not set!");
-	// 	// Fall back to regular SPI
-	// 	SSD1322_API_send_buffer(buffer, buffer_size);
-	// 	return;
+	// if (!TsyDMASPI) {
+	//  	Serial.println("SSD1322_API: ERROR - DMA SPI object not set!");
+	//  	// Fall back to regular SPI
+	//  	SSD1322_API_send_buffer(buffer, buffer_size);
+	//  	return;
 	// }
+
+	// Start Measure DMA CPU busy time
+	uint32_t startTime = 0;
+	if (DEBUG) {
+		startTime = micros();
+	}
+
 	// Copy buffer to DMA memory
-	uint32_t startTime = micros();
 	memcpy(dmaBuffer, buffer, buffer_size);
 	// Send command and prepare for data
     SSD1322_API_set_window(0, 63, 0, 63);
@@ -279,18 +285,27 @@ void SSD1322_API::SSD1322_API_send_buffer_DMA(uint8_t *buffer, uint32_t buffer_s
     digitalWrite(config.OLED_DC_PIN, HIGH);
     digitalWrite(config.OLED_CS_PIN, LOW);
 	// Use the member dmaSpi pointer for DMA transfer
-	//Serial.println("SSD1322_API: Queueing DMA transfer");
+	if (DEBUG) {
+		Serial.println("SSD1322_API: Queueing DMA transfer");
+	}
 	arm_dcache_flush((void*)dmaBuffer, buffer_size);
 	noInterrupts();
 	TsyDMASPI0.queue(dmaBuffer, buffer_size);
 	interrupts();
-	uint32_t time = micros() - startTime;
+	
+	// End Measure DMA transfer time
+	uint32_t endTime = 0;
+	if (DEBUG) {
+	   endTime = micros() - startTime;
+	   Serial.print("time: ");
+	   Serial.print((uint32_t)endTime);
+	   Serial.println("uS");	
+	   Serial.println("SSD1322_API: Waiting for DMA transfer");
+	}
 	// Wait for DMA to complete with timeout
-	// Serial.println("SSD1322_API: Waiting for DMA transfer");
 	uint32_t timeout = millis() + 1000;
 	uint32_t remained = 0;
 	
-	//Serial.println("SSD1322_API: Waiting for DMA transfer");
 	while ((remained = TsyDMASPI0.remained()) > 0) {
 		if (millis() > timeout) {
 			Serial.printf("SSD1322_API: ERROR - DMA transfer timeout! %d bytes remaining\n", remained);
@@ -299,10 +314,11 @@ void SSD1322_API::SSD1322_API_send_buffer_DMA(uint8_t *buffer, uint32_t buffer_s
 		yield(); // Allow other processing while waiting
 	}
 	
-	//Serial.println("time: " + String(time) + "uS");
 	// Complete the transfer
 	driver_instance->SSD1322_HW_drive_CS_high();
-	//Serial.println("SSD1322_API: DMA transfer complete");
+	if (DEBUG) {
+		Serial.println("SSD1322_API: DMA transfer complete");
+	}
 }
 #endif
 

@@ -591,8 +591,8 @@ void SSD1322_GFX::draw_char(uint8_t *frame_buffer, uint8_t c, uint16_t x, uint16
 		return;
 
 	c -= (uint8_t)gfx_font->first;		   // convert input char to corresponding byte from font array
-	GFXglyph *glyph = gfx_font->glyph + c; // get pointer of glyph corresponding to char
-	uint8_t *bitmap = gfx_font->bitmap;	   // get pointer of char bitmap
+	const GFXglyph *glyph = gfx_font->glyph + c; // get pointer of glyph corresponding to char
+	const uint8_t *bitmap = gfx_font->bitmap;	   // get pointer of char bitmap
 
 	uint16_t bo = glyph->bitmapOffset;
 	uint8_t width = glyph->width;

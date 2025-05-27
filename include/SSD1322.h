@@ -5,7 +5,6 @@
 #include "SSD1322_GFX.h"
 #include "SSD1322_HW_Driver.h"
 #include "SSD1322_Config.h"
-//#include "SSD1322_DMA.h"
 
 // wrapper class of individual classes
 class SSD1322
