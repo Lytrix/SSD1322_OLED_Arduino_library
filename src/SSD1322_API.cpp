@@ -264,6 +264,18 @@ void SSD1322_API::SSD1322_API_send_buffer_DMA(uint8_t *buffer, uint32_t buffer_s
 		SSD1322_API_send_buffer(buffer, buffer_size);
 		return;
 	}
+
+	// Never reuse dmaBuffer while a prior transfer is still reading it.
+	uint32_t priorWaitStart = millis();
+	while (TsyDMASPI0.remained() > 0) {
+		if (millis() - priorWaitStart > 1000) {
+			Serial.printf("SSD1322_API: ERROR - prior DMA still busy (%d bytes)\n",
+			              TsyDMASPI0.remained());
+			driver_instance->SSD1322_HW_drive_CS_high();
+			break;
+		}
+		yield();
+	}
 	// if (!TsyDMASPI) {
 	//  	Serial.println("SSD1322_API: ERROR - DMA SPI object not set!");
 	//  	// Fall back to regular SPI
