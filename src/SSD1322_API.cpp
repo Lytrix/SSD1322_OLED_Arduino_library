@@ -247,6 +247,21 @@ void SSD1322_API::SSD1322_API_send_buffer(uint8_t *buffer, uint32_t buffer_size)
 }
 
 #ifdef __IMXRT1062__
+namespace {
+bool waitForOledDmaQueueDrain(uint32_t timeoutMs, bool allowYield) {
+	uint32_t deadline = millis() + timeoutMs;
+	while (TsyDMASPI0.remained() > 0) {
+		if (millis() >= deadline) {
+			return false;
+		}
+		if (allowYield) {
+			yield();
+		}
+	}
+	return true;
+}
+}  // namespace
+
 /**
  *  @brief Sends pixel buffer to SSD1322 GRAM memory using DMA (Teensy 4.x only).
  *
@@ -266,15 +281,12 @@ void SSD1322_API::SSD1322_API_send_buffer_DMA(uint8_t *buffer, uint32_t buffer_s
 	}
 
 	// Never reuse dmaBuffer while a prior transfer is still reading it.
-	uint32_t priorWaitStart = millis();
-	while (TsyDMASPI0.remained() > 0) {
-		if (millis() - priorWaitStart > 1000) {
-			Serial.printf("SSD1322_API: ERROR - prior DMA still busy (%d bytes)\n",
-			              TsyDMASPI0.remained());
-			driver_instance->SSD1322_HW_drive_CS_high();
-			break;
-		}
-		yield();
+	if (!waitForOledDmaQueueDrain(1000, true)) {
+		Serial.printf("SSD1322_API: ERROR - prior DMA still busy (%u queued)\n",
+		              static_cast<unsigned>(TsyDMASPI0.remained()));
+		driver_instance->SSD1322_HW_drive_CS_high();
+		SSD1322_API_send_buffer(buffer, buffer_size);
+		return;
 	}
 	// if (!TsyDMASPI) {
 	//  	Serial.println("SSD1322_API: ERROR - DMA SPI object not set!");
@@ -314,18 +326,16 @@ void SSD1322_API::SSD1322_API_send_buffer_DMA(uint8_t *buffer, uint32_t buffer_s
 	   Serial.println("uS");	
 	   Serial.println("SSD1322_API: Waiting for DMA transfer");
 	}
-	// Wait for DMA to complete with timeout
-	uint32_t timeout = millis() + 1000;
-	uint32_t remained = 0;
-	
-	while ((remained = TsyDMASPI0.remained()) > 0) {
-		if (millis() > timeout) {
-			Serial.printf("SSD1322_API: ERROR - DMA transfer timeout! %d bytes remaining\n", remained);
-			break;
-		}
-		yield(); // Allow other processing while waiting
+	// CS is low for the active transfer: busy-wait only (no yield) so nothing else
+	// can touch SPI/OLED pins mid-frame and corrupt the top rows of GRAM.
+	if (!waitForOledDmaQueueDrain(1000, false)) {
+		Serial.printf("SSD1322_API: ERROR - DMA transfer timeout (%u queued)\n",
+		              static_cast<unsigned>(TsyDMASPI0.remained()));
+		driver_instance->SSD1322_HW_drive_CS_high();
+		SSD1322_API_send_buffer(buffer, buffer_size);
+		return;
 	}
-	
+
 	// Complete the transfer
 	driver_instance->SSD1322_HW_drive_CS_high();
 	if (DEBUG) {
