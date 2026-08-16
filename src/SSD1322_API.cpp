@@ -27,7 +27,8 @@ SSD1322_API::SSD1322_API(SSD1322_HW_DRIVER *driver) : driver_instance(driver) {
 }
 
 void SSD1322_API::begin() {
-	TsyDMASPI0.begin(config.OLED_CS_PIN, SPISettings(config.SPI_CLOCK, MSBFIRST, SPI_MODE0));
+	// DMA SPI is not started. 013908: blocking SPI resync at 7.43s wrote GRAM;
+	// later DFRAME 608-note frames used DMA and the panel stayed on frame 1.
 }
 
 //====================== command ========================//
@@ -239,6 +240,12 @@ void SSD1322_API::SSD1322_API_set_window(uint8_t start_column, uint8_t end_colum
  */
 void SSD1322_API::SSD1322_API_send_buffer(uint8_t *buffer, uint32_t buffer_size)
 {
+#if defined(__IMXRT1062__)
+	// Framebuffer lives in DMAMEM (DisplayManager). CPU draws update the cache;
+	// SPI reads physical RAM — without flush the panel can show one GRAM row
+	// while firmware reports a full frame (session_20260814_014156).
+	arm_dcache_flush_delete(buffer, buffer_size);
+#endif
 	SSD1322_API_command(ENABLE_RAM_WRITE); // enable write of pixels
 	driver_instance->SSD1322_HW_drive_CS_low();
 	driver_instance->SSD1322_HW_drive_DC_high();
@@ -301,21 +308,28 @@ void SSD1322_API::SSD1322_API_send_buffer_DMA(uint8_t *buffer, uint32_t buffer_s
 		startTime = micros();
 	}
 
-	// Copy buffer to DMA memory
+	// Framebuffer lives in DMAMEM (DisplayManager). Flush source before memcpy so
+	// the DMA copy is not a stale cache line (first row only on the panel).
+	arm_dcache_flush(buffer, buffer_size);
 	memcpy(dmaBuffer, buffer, buffer_size);
+	arm_dcache_flush(dmaBuffer, buffer_size);
 	// Send command and prepare for data
     SSD1322_API_set_window(0, 63, 0, 63);
     SSD1322_API_command(SSD1322_WRITE_RAM);
     digitalWrite(config.OLED_DC_PIN, HIGH);
     digitalWrite(config.OLED_CS_PIN, LOW);
-	// Use the member dmaSpi pointer for DMA transfer
 	if (DEBUG) {
 		Serial.println("SSD1322_API: Queueing DMA transfer");
 	}
-	arm_dcache_flush((void*)dmaBuffer, buffer_size);
 	noInterrupts();
-	TsyDMASPI0.queue(dmaBuffer, buffer_size);
+	const bool queued = TsyDMASPI0.queue(dmaBuffer, buffer_size);
 	interrupts();
+	if (!queued) {
+		Serial.println("SSD1322_API: ERROR - DMA queue rejected, falling back to SPI");
+		driver_instance->SSD1322_HW_drive_CS_high();
+		SSD1322_API_send_buffer(buffer, buffer_size);
+		return;
+	}
 	
 	// End Measure DMA transfer time
 	uint32_t endTime = 0;
@@ -364,21 +378,14 @@ size_t SSD1322_API::getFrameBufferSize() const {
  *  @brief Updates the display with the contents of the framebuffer.
  */
 void SSD1322_API::display() {
-	//Serial.println("SSD1322_API: Displaying buffer");
-	SSD1322_API_set_window(0, 63, 0, 63); // Full window, adjust as needed
-	//Serial.println("SSD1322_API: Window set");
+	SSD1322_API_set_window(0, 63, 0, 63);
 #ifdef __IMXRT1062__
-	//Serial.println("SSD1322_API: Sending buffer via DMA");
-	if (dmaBuffer) {
-		SSD1322_API_send_buffer_DMA(framebuffer + (0 * 256 / 2) + 0, FRAMEBUFFER_SIZE, dmaBuffer);
-	//	Serial.println("SSD1322_API: DMA buffer sent");
-	} else {
-		Serial.println("SSD1322_API: ERROR - DMA buffer not initialized, falling back to regular SPI");
-		SSD1322_API_send_buffer(framebuffer + (0 * 256 / 2) + 0, FRAMEBUFFER_SIZE);
+	blockingResyncPending_ = false;
+	static bool loggedSpiDisplay = false;
+	if (!loggedSpiDisplay) {
+		loggedSpiDisplay = true;
+		Serial.println("SSD1322_API: SPI display (DMA bypass)");
 	}
-#else
-	Serial.println("SSD1322_API: Sending buffer via SPI");
-	SSD1322_API_send_buffer(framebuffer, FRAMEBUFFER_SIZE);
 #endif
-	//Serial.println("SSD1322_API: Display update complete");
+	SSD1322_API_send_buffer(framebuffer, FRAMEBUFFER_SIZE);
 }

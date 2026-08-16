@@ -74,6 +74,7 @@ private:
 	uint8_t framebuffer[FRAMEBUFFER_SIZE];
 #ifdef __IMXRT1062__
 	uint8_t* dmaBuffer = nullptr;
+	bool blockingResyncPending_ = false;
 	// SSD1322_DMA* dmaSpi = nullptr;
 #endif
 	SSD1322_HW_DRIVER* driver_instance;
@@ -102,6 +103,7 @@ public:
 #ifdef __IMXRT1062__
 	void SSD1322_API_send_buffer_DMA(uint8_t *buffer, uint32_t buffer_size, uint8_t *dmaBuffer);
 	void setDMABuffer(uint8_t* buffer) { dmaBuffer = buffer; }
+	void requestBlockingResync() { blockingResyncPending_ = true; }
 	// void setDMASPI(SSD1322_DMA* spi) { dmaSpi = spi; }
 #endif
 	uint8_t* getFrameBuffer();

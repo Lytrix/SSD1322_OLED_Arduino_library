@@ -34,6 +34,8 @@ protected:
 
 public:
 
+    static constexpr uint8_t kCallerOwnsCsPin = 255;
+
     virtual ~MasterBase() {}
 
     bool begin(SPIClass& spic, const uint8_t cs, const SPISettings& setting, const bool active_low)
@@ -42,7 +44,12 @@ public:
         pin_cs = cs;
         b_active_low = active_low;
         spi_setting = setting;
-        pinMode(pin_cs, OUTPUT);
+        // 255: caller holds CS for the whole payload (OLED RAM write). Driving the
+        // same pin from the RX-complete ISR raises CS after a short RX and leaves
+        // only the first GRAM rows on the panel.
+        if (pin_cs != kCallerOwnsCsPin) {
+            pinMode(pin_cs, OUTPUT);
+        }
         spi->begin();
         if (!initDmaTx()) return false;
         if (!initDmaRx()) return false;
@@ -165,7 +172,9 @@ protected:
         initTransaction();
 
         spi->beginTransaction(spi_setting);
-        digitalWriteFast(pin_cs, !b_active_low);
+        if (pin_cs != kCallerOwnsCsPin) {
+            digitalWriteFast(pin_cs, !b_active_low);
+        }
 
         dmarx()->enable();
         dmatx()->enable();
@@ -173,7 +182,9 @@ protected:
 
     void endTransaction()
     {
-        digitalWriteFast(pin_cs, b_active_low);
+        if (pin_cs != kCallerOwnsCsPin) {
+            digitalWriteFast(pin_cs, b_active_low);
+        }
         spi->endTransaction();
         transactions.pop_front();
         b_in_transaction = false;
